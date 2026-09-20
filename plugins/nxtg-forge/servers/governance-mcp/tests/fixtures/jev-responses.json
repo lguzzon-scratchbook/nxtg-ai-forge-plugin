@@ -1,0 +1,64 @@
+{
+  "$comment": "Recorded JEV response shapes used to pin the wire-format contract. Replace/extend these with real captures on the first live call: run with FORGE_JEV_DEBUG=1 and diff the raw payload against these. Each fixture documents a response spelling that translateAnswer() must keep accepting — a provider rename shows up here as a deliberate, reviewable edit rather than a silent behavior change.",
+  "noul": [
+    {
+      "name": "documented bare noul field",
+      "raw": { "noul": 0.87, "confidence": 0.82 },
+      "expect": { "probability": 0.87, "confidence": 0.82 }
+    },
+    {
+      "name": "probability spelling",
+      "raw": { "probability": 0.13 },
+      "expect": { "probability": 0.13, "confidence": null }
+    },
+    {
+      "name": "distribution-only spelling (true key)",
+      "raw": { "probabilities": { "true": 0.61, "false": 0.39 }, "confidence": 0.77 },
+      "expect": { "probability": 0.61, "confidence": 0.77 }
+    },
+    {
+      "name": "maximum uncertainty",
+      "raw": { "noul": 0.5, "confidence": 0.5 },
+      "expect": { "probability": 0.5, "confidence": 0.5 }
+    },
+    {
+      "name": "hard zero and hard one stay exact",
+      "raw": { "noul": 0.0, "confidence": 0.95 },
+      "expect": { "probability": 0.0, "confidence": 0.95 }
+    }
+  ],
+  "choice": [
+    {
+      "name": "documented choice field with distribution",
+      "raw": { "choice": "billing", "probabilities": { "billing": 0.71, "technical": 0.2, "sales": 0.05, "other": 0.04 }, "confidence": 0.71 },
+      "expect": { "value": "billing", "confidence": 0.71 }
+    },
+    {
+      "name": "selected_option spelling",
+      "raw": { "selected_option": "testing", "confidence": 0.9 },
+      "expect": { "value": "testing", "confidence": 0.9 }
+    },
+    {
+      "name": "escape-hatch option selected",
+      "raw": { "choice": "other", "probabilities": { "builder": 0.1, "other": 0.9 } },
+      "expect": { "value": "other", "confidence": 0.9 }
+    }
+  ],
+  "score": [
+    {
+      "name": "probability-weighted position between levels",
+      "raw": { "score": 1.42, "probabilities": { "0": 0.18, "1": 0.34, "2": 0.48 }, "confidence": 0.68 },
+      "expect": { "value": 1.42, "confidence": 0.68 }
+    },
+    {
+      "name": "exact level landing",
+      "raw": { "score": 2.0, "confidence": 0.93 },
+      "expect": { "value": 2.0, "confidence": 0.93 }
+    },
+    {
+      "name": "value spelling",
+      "raw": { "value": 0.0 },
+      "expect": { "value": 0.0 }
+    }
+  ]
+}

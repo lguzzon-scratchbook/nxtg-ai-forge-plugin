@@ -30,4 +30,22 @@ describe("version-surface agreement", () => {
     expect(r.ok).toBe(false);
     expect(r.problems.some((p) => p.includes("c=3.10.2"))).toBe(true);
   });
+
+  // The bash JEV sidecar stamps its own copy of the question-definition version into every audit
+  // record. If the two drift, an audit line silently mislabels which rubric produced it — the
+  // exact failure the version surfaces exist to prevent, in a second language.
+  it("lib-jev.sh JEV_QUESTIONS_VERSION matches questions.v1.json", () => {
+    const bashVer = readFileSync(
+      join(REPO, "plugins/nxtg-forge/hooks/scripts/lib-jev.sh"), "utf8"
+    ).match(/^JEV_QUESTIONS_VERSION="\$\{JEV_QUESTIONS_VERSION:-([^}]+)\}"/m)?.[1];
+    const jsonVer = rd(join(import.meta.dirname, "../jev/questions.v1.json")).version;
+    expect(bashVer, "JEV_QUESTIONS_VERSION not found in lib-jev.sh").toBeDefined();
+    expect(bashVer).toBe(jsonVer);
+  });
+
+  it("the pinned JEV model is an exact version, never an alias", () => {
+    const model = rd(join(import.meta.dirname, "../jev/questions.v1.json")).model;
+    expect(model).not.toMatch(/latest|preview|stable|\*/i);
+    expect(model).toMatch(/^jev-\d+\.\d+\.\d+$/);
+  });
 });

@@ -146,6 +146,53 @@ python -m pytest --cov=src --cov-report=term 2>&1 | grep TOTAL
 ```
 **Severity**: MEDIUM — but erodes trust in all project reporting.
 
+## Phase 2: Confirming Leads into Verdicts
+
+Patterns 1–4 and 6–8 produce **counts**, not verdicts. The counts above are leads; Phase 2 is where a
+lead becomes FOUND or CLEAN, and it must be confirmed by *reading the lines*. Two ways to confirm:
+
+**Manual confirmation (always available).** Read the flagged lines and apply the pattern's own
+question from the catalog. This is the default and needs nothing installed.
+
+**Structured confirmation via JEV (optional).** When `TYPESAFE_API_KEY` is set, you may call
+`forge_jev_decide` once to confirm up to eight patterns in a single request — one Noul per pattern,
+each evaluated independently:
+
+```
+forge_jev_decide({
+  caller: "crucible-audit",
+  state: { stack, pattern_lead_counts, sampled_lines },   // sampled lines ONLY, never the whole repo
+  questions: [
+    "crucible.pattern2_hollow",
+    "crucible.pattern3_mock_ratio",
+    "crucible.pattern5_fake_integration",
+    "crucible.pattern7_output_quality",
+    "crucible.pattern8_badge_fraud"
+  ]
+})
+```
+
+State discipline matters: send the sampled lines for each pattern, not the repository. Accuracy
+degrades with irrelevant context, and the 32k-token budget is real.
+
+**Composition rule — apply mechanically, never by feel:**
+
+| JEV label | Report status |
+|---|---|
+| `FOUND` (probability ≥ 0.5 AND confidence ≥ 0.7) | `FOUND` |
+| `UNCONFIRMED` (high probability but low confidence, or below the floor) | `FOUND (UNCONFIRMED)` |
+| JEV unavailable / answer unparsed | fall back to manual confirmation |
+
+`FOUND (UNCONFIRMED)` exists so a high-probability but low-confidence lead is surfaced as a lead
+rather than rubber-stamped as a verdict. It never counts toward the fraud margin.
+
+The JEV confirmation is **advisory and additive**: it never clears a finding on its own. A `CLEAN`
+status still requires you to have read the lines. If JEV is unavailable, Phase 2 is the manual read,
+unchanged — the report format simply never gains the `(UNCONFIRMED)` suffix.
+
+Every confirmation is logged to `.claude/logs/jev-audit.jsonl` with its probability, confidence,
+applied rule and model version, so an audit can be re-evaluated later against the same evidence.
+
 ## The Audit Report Template
 
 ```

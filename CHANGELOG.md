@@ -6,6 +6,64 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 
 ---
 
+## [3.11.0] — 2026-09-19
+
+The **JEV advisory decision layer** — a bounded, credential-gated second opinion at the decision
+points where Forge previously relied on unconstrained LLM prose. Adds one MCP tool
+(`forge_jev_decide`), pinning every question, rubric and threshold in versioned repo config rather
+than in a prompt.
+
+**Hard gate: `TYPESAFE_API_KEY`.** Unset, every path below takes its previous deterministic route,
+byte-identically — no network call, no audit write, no behavior change. JEV is never a dependency.
+
+### Added
+- `servers/governance-mcp/jev.mjs` — decision layer: Noul/Choice/Score translation, local rule
+  application, audit logging, graceful degradation on every failure mode (no key, timeout, HTTP
+  error, oversized state, unparseable body). Never throws into a caller.
+- `servers/governance-mcp/jev/questions.v1.json` — pinned question definitions (`model: jev-1.13.0`
+  — an exact version, never an alias) with per-question decision rules.
+- `hooks/scripts/lib-jev.sh` — minimal `curl`+`jq` sidecar for the bash hook layer, with the same
+  gate contract. Redacts secret-shaped assignments and long opaque tokens before any excerpt leaves
+  the machine.
+- `docs/jev.md` — operator runbook: enablement, the four invariants, threshold rationale, the audit
+  log as calibration corpus, the data-egress posture, and the wire-format caveat.
+- `tests/jev.test.mjs` (45 cases) + `tests/fixtures/jev-responses.json` — the key gate, the rule
+  tables, and the recorded wire-format contract.
+
+### Changed
+- `governance-verifier` Step 3 — the JUSTIFIED/REVERT verdict gains a structured fan-out
+  (Noul verdict + Choice concern type + Score severity) with **asymmetric thresholds**: REVERT
+  requires low probability *and* adequate confidence, and the wide middle band escalates to human
+  review. The agent keeps override authority; overrides are stated, never silent.
+- `crucible-audit` — new Phase 2 that turns grep *leads* into verdicts, with a mechanical
+  composition rule (`FOUND` requires p ≥ 0.5 and confidence ≥ 0.7; below that, `FOUND
+  (UNCONFIRMED)`, which never counts toward the fraud margin).
+- `owasp-security` — one-sided **fail-safe** triage: a finding may be suppressed only at ≥ 0.9
+  probability of not-exploitable at ≥ 0.9 confidence; every other outcome reports. Deterministic
+  exclusions still run first.
+- `security-semgrep-scan.sh` — three fixes: (1) `.mjs`/`.mts`/`.cts` added to the scan allowlist
+  (the plugin's own ES-module server was previously never scanned); (2) config resolution is now
+  local-first (`.semgrep.yml` → `auto`) and **reports when a config could not be loaded** instead of
+  silently implying a clean file — an unauthenticated registry 401 previously produced zero findings
+  with no signal; (3) deterministic severity-then-rule ordering, so identical findings render
+  identically. Optional JEV actionability reorder + "(likely FP)" label on top; findings are never
+  hidden.
+
+### Fixed
+- `tests/integration/l1-journey.mjs` — the harness built a child `PATH` without the running node's
+  directory, so on any mise/nvm/asdf/homebrew-arm install `start.sh`'s `exec node index.mjs` died
+  with a misleading "Connection closed". Now derives the directory from `process.execPath`. (Was
+  failing on pristine `main` before this change.)
+
+### Notes
+- `forge_get_governance_health` and the frozen `governance-score-rubric-v1.0` are **unchanged**; a
+  test recomputes the score across a JEV call and asserts byte-identity. Blocking PreToolUse guards
+  are untouched — JEV is advisory everywhere and never stands in for a guard.
+- Live wire format is reconstructed from public docs, not a verified capture. First real call:
+  `FORGE_JEV_DEBUG=1` and diff the payload against `tests/fixtures/jev-responses.json`.
+
+---
+
 ## [3.10.4] — 2026-07-19
 
 The **G-09 integration-harness suite** — machine-tested, CI-adoptable end-to-end coverage for all three Forge products at the three deployment tiers (L1 plugin-standalone · L2 plugin+orchestrator · L3 plugin+orchestrator+forge-ui). **Test infrastructure only — no runtime, tool, agent, command, or skill changes** (counts unchanged). Each leg was built refute-first and independently Codex-gated.

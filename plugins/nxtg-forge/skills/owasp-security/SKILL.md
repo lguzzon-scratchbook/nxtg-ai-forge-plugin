@@ -258,6 +258,40 @@ Skip these low-signal patterns to avoid noise:
 
 **Contextual judgment:** ask "Can an attacker exploit this in production with realistic access?" If exploitation requires admin access, physical access, or editing the source — it is not a security finding.
 
+### Optional structured triage via JEV (fail-safe, one-sided)
+
+When `TYPESAFE_API_KEY` is set, the contextual judgment above can be made consistent by calling
+`forge_jev_decide` once per finding batch, and adding a taxonomy Choice in the same call:
+
+```
+forge_jev_decide({
+  caller: "owasp-security",
+  state: { finding, file_path, flagged_lines, surrounding_context },
+  questions: ["owasp.exploitable", "owasp.category"]
+})
+```
+
+**The gate is one-sided and fail-safe.** A finding may move to the skip list ONLY when the
+probability of NOT-exploitable is ≥ 0.9 at ≥ 0.9 confidence (`SUPPRESS`). Every other outcome —
+`REPORT`, low confidence, unparsed answer, no key, timeout — keeps the finding in the report. Noise
+reduction never outranks a missed vulnerability.
+
+Two hard ordering rules:
+
+1. The deterministic exclusion list above runs FIRST. JEV is a second pass over what survives it —
+   it can never resurrect or re-admit a finding the list already excluded, and it cannot be the
+   reason something was skipped without the list agreeing.
+2. The deterministic PreToolUse guards are untouched by this. Those are blocking, local, and
+   offline. This triage is advisory and runs in the ASSESS phase only.
+
+Every disposition is logged to `.claude/logs/jev-audit.jsonl` (probability, confidence, applied
+rule, model version), so a suppression is always auditable rather than silent. If JEV is unavailable
+the prose judgment above applies unchanged.
+
+`owasp.category` replaces the prose ID-mapping — it returns a single taxonomy entry from the
+A01–A10 / API1–10 / ASI01–10 / CWE option set, with `other` for anything that does not fit. Prefer
+`other` over forcing the closest-looking ID.
+
 ---
 
 ## Gotchas

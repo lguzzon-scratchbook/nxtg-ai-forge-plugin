@@ -77,6 +77,44 @@ For scope concerns:
 
 ### Step 3: Analyze and Verdict
 
+**Optional structured second opinion (JEV).** When the `TYPESAFE_API_KEY` environment variable is
+set, call the `forge_jev_decide` MCP tool ONCE for this step, passing the Step 2 evidence as state:
+
+```
+forge_jev_decide({
+  caller: "governance-verifier",
+  state: { hook_message, concern, evidence, changed_files, git_context },
+  questions: ["gv.verdict", "gv.concern_type", "gv.severity"]
+})
+```
+
+All three questions are evaluated independently and in parallel in that single call. The tool
+returns each answer with its probability, confidence, and the **applied local rule** — the
+thresholds live in `servers/governance-mcp/jev/questions.v1.json`, not in your prompt, so they are
+identical across runs and reviewable in a diff.
+
+Mapping the returned rule labels to the verdict:
+
+| JEV label for `gv.verdict` | Verdict |
+|---|---|
+| `JUSTIFIED` | ✅ JUSTIFIED |
+| `REVERT_RECOMMENDED` | ❌ REVERT RECOMMENDED |
+| `HUMAN_REVIEW` (the wide middle band, or low confidence) | ⚠️ JUSTIFIED — WITH HUMAN REVIEW |
+
+The rule is deliberately asymmetric: `REVERT_RECOMMENDED` requires a low probability AND adequate
+confidence, because a false REVERT blocks correct work while a missed revert is caught at the next
+review. **Do not re-derive the verdict by feel when JEV answered** — quote the probability and the
+rule, then state your own conclusion. You retain override authority; if you disagree with the label,
+say so explicitly and record the override, including your reason.
+
+If JEV is unavailable (`available: false` — no key, timeout, network error, oversized state), follow
+the prose protocol exactly as before and do not mention JEV in the report. Never let a JEV failure
+change the verdict.
+
+Copy the `gv.concern_type` selection into the concern classification (it maps to the four enum
+values in Step 1), and the `gv.severity` score into the Step 4 sentinel severity: a score below 1
+maps to `low`, 1–2 to `medium`, above 2 to `high`.
+
 Produce a structured verdict:
 
 ```json
@@ -90,9 +128,22 @@ Produce a structured verdict:
   },
   "verdict": "JUSTIFIED",
   "reasoning": "Implementation explicitly returns null for non-existent tasks. Test change aligns with implementation.",
-  "recommendation": "Proceed with test update"
+  "recommendation": "Proceed with test update",
+  "jev": {
+    "available": true,
+    "model": "jev-1.13.0",
+    "questions_version": "1.0.0",
+    "verdict_probability": 0.91,
+    "verdict_confidence": 0.88,
+    "applied_rule": "JUSTIFIED",
+    "overridden": false
+  }
 }
 ```
+
+When JEV is unavailable, omit the `jev` block entirely rather than writing `available: false` into
+the verdict — the audit trail for unavailability lives in the hook layer, not in a verification
+record.
 
 ### Step 4: Report to Sentinel
 
@@ -144,6 +195,16 @@ When invoked, produce a clear verification report:
 - Respects same confidence thresholds
 - Uses same severity levels
 
+### With the JEV advisory layer (`forge_jev_decide`)
+- Gate: requires `TYPESAFE_API_KEY`. Absent → Step 3 runs as plain prose, unchanged.
+- Thresholds and question wording are pinned in `servers/governance-mcp/jev/questions.v1.json`;
+  bump that file's version when you change them, so old decisions stay interpretable.
+- Every call is appended to `.claude/logs/jev-audit.jsonl` (probability, confidence, applied rule,
+  model version). That log is the calibration corpus — tune thresholds from it, never from a vendor
+  benchmark.
+- JEV is a second opinion on YOUR evidence, never a replacement for gathering it. It is not
+  permitted to authorize an irreversible action, and it never overrides the user.
+
 ### With PostToolUse hooks
 - Can be triggered automatically on block
 - Provides evidence to unblock safely
@@ -179,7 +240,10 @@ User: /verify-governance
 
 ## Success Criteria
 
-1. **Speed**: Verification completes in <10s
-2. **Accuracy**: Zero false "REVERT" recommendations
-3. **Clarity**: Every verdict has clear evidence
+1. **Speed**: Verification completes in <10s (JEV adds at most one bounded call, default 3s timeout)
+2. **Accuracy**: Zero false "REVERT" recommendations — enforced structurally by the asymmetric
+   threshold rule when JEV is available, and by the evidence protocol when it is not
+3. **Clarity**: Every verdict has clear evidence; when JEV answered, its probability and applied
+   rule are quoted verbatim
 4. **Actionability**: User knows exactly what to do next
+5. **Transparency**: Any override of a JEV label is stated with a reason, never silent

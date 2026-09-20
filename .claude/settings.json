@@ -11,7 +11,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash /home/axw/ASIF/scripts/asif-hook-tap.sh --name team-alignment -- bash /home/axw/ASIF/scripts/asif-team-alignment-context-hook.sh",
+            "command": "for r in \"${ASIF_ROOT:-}\" \"$HOME/ASIF\"; do [ -n \"$r\" ] && [ -f \"$r/scripts/asif-hook-tap.sh\" ] && { export ASIF_ROOT=\"$r\"; exec bash \"$r/scripts/asif-hook-tap.sh\" --name team-alignment -- bash \"$r/scripts/asif-team-alignment-context-hook.sh\"; }; done; exit 0",
             "timeout": 5
           }
         ]
@@ -23,7 +23,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash /home/axw/ASIF/scripts/asif-hook-tap.sh --name team-alignment -- bash /home/axw/ASIF/scripts/asif-team-alignment-context-hook.sh",
+            "command": "for r in \"${ASIF_ROOT:-}\" \"$HOME/ASIF\"; do [ -n \"$r\" ] && [ -f \"$r/scripts/asif-hook-tap.sh\" ] && { export ASIF_ROOT=\"$r\"; exec bash \"$r/scripts/asif-hook-tap.sh\" --name team-alignment -- bash \"$r/scripts/asif-team-alignment-context-hook.sh\"; }; done; exit 0",
             "timeout": 5
           }
         ]

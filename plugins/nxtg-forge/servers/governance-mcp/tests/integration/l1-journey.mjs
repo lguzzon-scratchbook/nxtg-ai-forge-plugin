@@ -2,7 +2,7 @@
 // L1 integration harness (DIRECTIVE-NXTG-20260718-10, G-09 phase 1 of 3).
 //
 // Boots the REAL governance-mcp server over stdio (via start.sh) against a clean temp fixture and
-// exercises the full L1 journey end-to-end: JSON-RPC handshake + version, all 8 tools, and the
+// exercises the full L1 journey end-to-end: JSON-RPC handshake + version, the Node tools, and the
 // Lego-Snap invariant. Standalone entrypoint — `node tests/integration/l1-journey.mjs` (exit 0/1);
 // also invoked as the second half of `npm test`. No new runtime deps, no tool-impl changes.
 //
@@ -11,7 +11,7 @@
 //    explicitly + set cwd, else start.sh's `${FORGE_PROJECT_ROOT:-$(pwd)}` silently targets the
 //    server dir and the harness "passes" while testing nothing.
 //  * FORGE_TEST_MODE must be ABSENT in the child so index.mjs runs server.connect().
-//  * child PATH = shadowBin:/usr/bin:/bin:/usr/local/bin — no-op browser openers (forge_open_dashboard
+//  * child PATH = shadowBin:<node dir>:/usr/bin:/bin:/usr/local/bin — no-op browser openers (forge_open_dashboard
 //    calls open() when not in FORGE_TEST_MODE) + conda excluded so `which pytest` fails → forge_run_tests
 //    deterministically reports "no runner".
 //  * finally{}: close client (kills child), rm tempdirs.
@@ -24,7 +24,7 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { execFileSync } from "node:child_process";
 import {
-  NODE_TOOLS, checkVersionsAgree, checkToolSet, checkNoOrchestratorRef, checkShapedResponse,
+  NODE_TOOLS, NOARG_NODE_TOOLS, checkVersionsAgree, checkToolSet, checkNoOrchestratorRef, checkShapedResponse,
 } from "../lib/checks.mjs";
 
 const SERVER_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", ".."); // -> governance-mcp/
@@ -85,13 +85,18 @@ async function main() {
   console.log("== L1 integration harness ==");
   const shadowBin = makeShadowBin();
   const fixture = makeFixture();
-  const childPath = `${shadowBin}:/usr/bin:/bin:/usr/local/bin`;
+  // Include the directory holding the CURRENT node binary. A hardcoded /usr/local/bin misses
+  // node installed via mise/nvm/asdf/homebrew-arm (this repo's dev setup), and start.sh's `exec
+  // node index.mjs` then dies with "Connection closed" — a confusing crash that looks like a
+  // server bug but is purely a PATH artifact of the harness.
+  const nodeBinDir = dirname(process.execPath);
+  const childPath = `${shadowBin}:${nodeBinDir}:/usr/bin:/bin:/usr/local/bin`;
   let client, transport;
   const responses = []; // { tool, text } for the orchestrator-ref check
 
   try {
-    // ── Leg A: real stdio handshake + all 8 tools against the fixture ──
-    console.log("\n[Leg A] boot governance-mcp via start.sh, handshake, 8 tools");
+    // ── Leg A: real stdio handshake + every no-arg tool against the fixture ──
+    console.log(`\n[Leg A] boot governance-mcp via start.sh, handshake, ${NODE_TOOLS.length} tools`);
     transport = new StdioClientTransport({
       command: "bash",
       args: [START_SH],
@@ -109,13 +114,13 @@ async function main() {
 
     const toolList = (await client.listTools()).tools.map((t) => t.name);
     const set = checkToolSet(toolList, NODE_TOOLS);
-    check("tools/list == the 8 Node tools", set.ok, `missing=[${set.missing}] extra=[${set.extra}]`);
+    check(`tools/list == the ${NODE_TOOLS.length} Node tools`, set.ok, `missing=[${set.missing}] extra=[${set.extra}]`);
     // Live cross-check of the whole -05 saga: the Node server exposes the governance tool, not the Rust one.
     check("tools/list contains forge_get_governance_health, NOT forge_get_health",
       toolList.includes("forge_get_governance_health") && !toolList.includes("forge_get_health"));
 
     const parsedByTool = {};
-    for (const tool of NODE_TOOLS) {
+    for (const tool of NOARG_NODE_TOOLS) {
       const result = await client.callTool({ name: tool, arguments: {} });
       const shaped = checkShapedResponse(tool, result);
       check(`${tool} → shaped non-error response`, shaped.ok, shaped.reason);
@@ -123,6 +128,23 @@ async function main() {
       const text = (result.content || []).filter((c) => c?.type === "text").map((c) => c.text).join("\n");
       responses.push({ tool, text });
     }
+
+    // ─ Leg A2: forge_jev_decide (the TYPESAFE_API_KEY gate) ─
+    // The harness runs with an explicit env that does NOT include TYPESAFE_API_KEY, so the
+    // expected observable is the unavailable envelope — the gate itself, verified over the wire.
+    const jevResult = await client.callTool({
+      name: "forge_jev_decide",
+      arguments: { state: { evidence: "harness probe" }, questions: ["gv.verdict"] },
+    });
+    const jevShaped = checkShapedResponse("forge_jev_decide", jevResult);
+    check("forge_jev_decide → shaped non-error response", jevShaped.ok, jevShaped.reason);
+    check("forge_jev_decide unavailability is NOT an MCP error (caller keeps its own path)",
+      jevResult.isError !== true);
+    check("forge_jev_decide reports the TYPESAFE_API_KEY gate when the key is absent",
+      jevShaped.parsed?.available === false && /TYPESAFE_API_KEY/.test(jevShaped.parsed?.reason ?? ""),
+      `available=${jevShaped.parsed?.available} reason=${jevShaped.parsed?.reason}`);
+    responses.push({ tool: "forge_jev_decide", text: JSON.stringify(jevShaped.parsed ?? {}) });
+    parsedByTool.forge_jev_decide = jevShaped.parsed;
 
     // Fixture-binding proof (deterministic VALUE, not just shape): the server actually read OUR
     // fixture, not the server dir. Guards the FORGE_PROJECT_ROOT-not-reached failure mode where every

@@ -1,0 +1,118 @@
+{
+  "$comment": "Pinned JEV question/rubric definitions for nxtg-forge. Versioned WITH the repo: changing wording, options, levels or thresholds is a reviewable diff, and the version string is stamped into .claude/logs/jev-audit.jsonl so decisions are reproducible. Bump `version` on ANY semantic change; pin a versioned `model` (never an alias) so behavior cannot drift under you.",
+  "version": "1.0.0",
+  "model": "jev-1.13.0",
+  "questions": {
+    "gv.verdict": {
+      "type": "noul",
+      "text": "The flagged change is justified by the collected evidence: the code, the test, and the type definition agree that the new behavior is intentional rather than a regression or a test weakened to match a bug.",
+      "criteria": "True when the evidence shows the implementation deliberately produces the new behavior (explicit return, updated type, documented change) AND the test change matches that behavior. False when the evidence shows the test was altered to match a bug, a behavior changed without a corresponding implementation change, or the change contradicts the declared type.",
+      "rule": {
+        "justify_above": 0.8,
+        "revert_below": 0.2,
+        "confidence_min": 0.6,
+        "asymmetry_note": "REVERT carries all the downside: a false REVERT blocks correct work and burns trust, a missed revert is caught by the next review. Hence the wide human-review band (0.2..0.8) and the 0.6 confidence floor."
+      }
+    },
+    "gv.concern_type": {
+      "type": "choice",
+      "text": "Which single category best describes the governance concern raised by the hook? Choose `other` when the concern does not fit the four named categories — do not force the least-wrong fit.",
+      "options": ["test-mismatch", "scope-creep", "security", "breaking-change", "other"],
+      "rule": {}
+    },
+    "gv.severity": {
+      "type": "score",
+      "text": "Rate the severity of the flagged concern on this ordered scale. Judge what the change actually does to the project, not how alarming the hook message sounds.",
+      "levels": [
+        "informational: no user-visible behavior change, no interface touched, reversible by reverting one file",
+        "single-workstream: alters behavior inside one workstream or module, still reversible, no external contract touched",
+        "cross-workstream: breaks a contract, public API, or an existing test expectation relied on by more than one workstream"
+      ],
+      "rule": {}
+    },
+    "crucible.pattern2_hollow": {
+      "type": "noul",
+      "text": "Given these sampled assertion lines from a test suite, at least one assertion fails to pin an expected value: it would still pass if the code under test returned wrong output. Existence checks (`is not None`, `.exists()`), bare `assert len(x) >= 1`, and unasserted calls count as hollow; `assert x == exact_value`, range checks with meaningful bounds, and relational checks between outputs do not.",
+      "criteria": "True when a sampled assertion cannot be falsified by a realistic bug in the code under test. Ignore assertions that are legitimately about presence and are accompanied by a value assertion on the same output.",
+      "rule": { "min_probability": 0.5, "min_confidence": 0.7 }
+    },
+    "crucible.pattern3_mock_ratio": {
+      "type": "noul",
+      "text": "Given these mock-usage counts and sampled test bodies, the mock ratio indicates mock proliferation: mocks replace components the project owns and could run in CI, not external services, network boundaries, clocks, or non-deterministic dependencies.",
+      "criteria": "True when sampled mocks substitute project-owned modules, business logic, or in-process collaborators. Mocks of third-party APIs, the filesystem, time, randomness, and hardware are legitimate and do not count toward proliferation.",
+      "rule": { "min_probability": 0.5, "min_confidence": 0.7 }
+    },
+    "crucible.pattern5_fake_integration": {
+      "type": "noul",
+      "text": "Given these sampled integration- or e2e-named test files, at least one mocks the very components it claims to integrate, so the test cannot detect an integration failure between them.",
+      "criteria": "True when a test named integration/e2e/system mocks every participant of the interaction it purports to exercise. False when at least one real participant is exercised end to end, even if peripheral dependencies are mocked.",
+      "rule": { "min_probability": 0.5, "min_confidence": 0.7 }
+    },
+    "crucible.pattern7_output_quality": {
+      "type": "noul",
+      "text": "Given these sampled test assertions, at least one verifies the semantic quality of the output (content accuracy, value ranges, relationships, invariants, formatting) rather than merely that the code ran or produced something non-empty.",
+      "criteria": "True when a sampled assertion checks what the output IS. Status-code-only, file-exists, count>0 and no-exception assertions do not satisfy this. A suite where every assertion is a liveness check means Pattern 7 is present, so answer False for that suite.",
+      "rule": { "min_probability": 0.5, "min_confidence": 0.7 }
+    },
+    "crucible.pattern8_badge_fraud": {
+      "type": "noul",
+      "text": "Given the README badge claims and the measured real numbers, the badges overstate the project's tests or coverage beyond rounding, so the badge is misleading rather than merely stale.",
+      "criteria": "True when a claimed number exceeds the measured number by more than rounding noise and the badge is presented as current. Ignore badges that are clearly aspirational or explicitly marked as targets.",
+      "rule": { "min_probability": 0.5, "min_confidence": 0.7 }
+    },
+    "semgrep.actionable": {
+      "type": "noul",
+      "text": "This static-analysis finding is a genuine, actionable security issue in this file, given the code excerpt: the flagged pattern is reachable with attacker-controlled data and is not already neutralised by surrounding validation, parameterisation, or framework defaults.",
+      "criteria": "True when a developer should act on the finding: the data flow is real, the sink is reachable in production, and no surrounding control neutralises it. False for pattern matches on literals, test scaffolding, already-escaped values, or framework-managed paths.",
+      "rule": {
+        "likely_fp_below": 0.4,
+        "note": "ADVISORY LABEL ONLY. A low probability reorders and labels the finding — it must NEVER hide it. Nothing in the reporting path may filter on this value."
+      }
+    },
+    "owasp.exploitable": {
+      "type": "noul",
+      "text": "A realistic attacker with production access — not admin rights, not physical access, not the ability to edit the source — could exploit this specific finding in production.",
+      "criteria": "True when exploitation is reachable by an external or ordinary authenticated user against deployed code. False when the finding requires admin/physical access, source editing, development-only error handlers, internal-network-only endpoints behind a gateway, type-only issues at no trust boundary, or test/doc code.",
+      "rule": {
+        "suppress_above": 0.9,
+        "suppress_confidence": 0.9,
+        "one_sided_note": "FAIL-SAFE: suppression is permitted ONLY when the probability of NOT-exploitable is >= 0.9 at >= 0.9 confidence. Every other outcome — exploitable, low confidence, unparsed, unavailable — keeps the finding in the report. A wrong-but-confident suppression is the only dangerous outcome, so the gate is deliberately strict and every suppression is logged."
+      }
+    },
+    "owasp.category": {
+      "type": "choice",
+      "text": "Which single taxonomy entry does this finding map to? Choose `other` when no entry fits — do not force the closest-looking ID.",
+      "options": [
+        "A01 Broken Access Control", "A02 Security Misconfiguration", "A03 Software Supply Chain Failures",
+        "A04 Cryptographic Failures", "A05 Injection", "A06 Insecure Design",
+        "A07 Authentication Failures", "A08 Software and Data Integrity Failures",
+        "A09 Logging and Alerting Failures", "A10 Mishandling of Exceptional Conditions",
+        "API1 Broken Object Level Authorization", "API2 Broken Authentication", "API3 Broken Object Property Level Authorization",
+        "API4 Unrestricted Resource Consumption", "API5 Broken Function Level Authorization",
+        "API6 Unrestricted Access to Sensitive Business Flows", "API7 Server Side Request Forgery",
+        "API8 Security Misconfiguration", "API9 Improper Inventory Management", "API10 Unsafe Consumption of APIs",
+        "ASI01 Agent Goal Hijack", "ASI02 Tool Misuse", "ASI03 Identity and Privilege Abuse",
+        "ASI04 Agentic Supply Chain", "ASI05 Unexpected Code Execution", "ASI06 Memory and Context Poisoning",
+        "ASI07 Insecure Inter-Agent Communication", "ASI08 Cascading Failures", "ASI09 Human-Agent Trust Exploitation",
+        "ASI10 Rogue Agents",
+        "CWE-79 XSS", "CWE-89 SQL Injection", "CWE-22 Path Traversal", "CWE-78 OS Command Injection",
+        "CWE-352 CSRF", "CWE-918 SSRF", "CWE-502 Deserialization", "CWE-798 Hardcoded Credentials",
+        "other"
+      ],
+      "rule": {}
+    },
+    "assist.routing_fit": {
+      "type": "choice",
+      "text": "Which single agent from this roster is the best fit for the described task, judged on the task's primary deliverable rather than on keywords in its wording? Choose `oracle` when the task is advisory, cross-cutting, or does not clearly belong to one specialist.",
+      "options": [
+        "builder", "planner", "guardian", "detective", "security", "api", "analytics", "compliance",
+        "database", "devops", "docs", "governance-verifier", "integration", "learning", "orchestrator",
+        "performance", "refactor", "release-sentinel", "testing", "ui", "oracle", "other"
+      ],
+      "rule": {
+        "min_confidence_to_autoselect": 0.7,
+        "note": "ADVISORY: below the confidence floor the caller must present the full candidate list and let the model/user choose. JEV never silently assigns an agent."
+      }
+    }
+  }
+}

@@ -30,8 +30,8 @@ afterAll(teardownFixture);
 // ---------------------------------------------------------------------------
 
 describe('TOOLS definitions', () => {
-  it('exports exactly 8 tools', () => {
-    expect(TOOLS).toHaveLength(8);
+  it('exports exactly 9 tools', () => {
+    expect(TOOLS).toHaveLength(9);
   });
 
   it('all tool names use forge_ prefix', () => {
@@ -47,10 +47,21 @@ describe('TOOLS definitions', () => {
     }
   });
 
-  it('all tools have the standard empty inputSchema', () => {
-    for (const tool of TOOLS) {
+  it('the 8 read-only governance tools take no arguments', () => {
+    // forge_jev_decide is the single tool that accepts input — it needs state + questions.
+    const noArg = TOOLS.filter((t) => t.name !== 'forge_jev_decide');
+    expect(noArg).toHaveLength(8);
+    for (const tool of noArg) {
       expect(tool.inputSchema).toEqual({ type: 'object', properties: {}, required: [] });
     }
+  });
+
+  it('forge_jev_decide declares state + questions as required', () => {
+    const jev = TOOLS.find((t) => t.name === 'forge_jev_decide');
+    expect(jev).toBeDefined();
+    expect(jev.inputSchema.required).toEqual(['state', 'questions']);
+    expect(Object.keys(jev.inputSchema.properties)).toContain('caller');
+    expect(jev.inputSchema.properties.questions.type).toBe('array');
   });
 
   it('contains all expected tool names', () => {
@@ -64,6 +75,7 @@ describe('TOOLS definitions', () => {
       'forge_list_checkpoints',
       'forge_security_scan',
       'forge_open_dashboard',
+      'forge_jev_decide',
     ];
     for (const name of expected) {
       expect(names).toContain(name);
@@ -160,6 +172,47 @@ describe('dispatchToolCall', () => {
     expect(result.path).toMatch(/\.html$/);
     expect(result.browserUrl).toMatch(/^file:\/\//);
     expect(typeof result.projectName).toBe('string');
+  });
+
+  // -------------------------------------------------------------------------
+  // forge_jev_decide — the TYPESAFE_API_KEY gate is the contract under test
+  // -------------------------------------------------------------------------
+
+  it('forge_jev_decide is unavailable without TYPESAFE_API_KEY and says why', async () => {
+    const saved = process.env.TYPESAFE_API_KEY;
+    delete process.env.TYPESAFE_API_KEY;
+    try {
+      const result = await dispatchToolCall('forge_jev_decide', {
+        state: { evidence: 'x' },
+        questions: ['gv.verdict'],
+      });
+      expect(result.available).toBe(false);
+      expect(result.reason).toContain('TYPESAFE_API_KEY');
+    } finally {
+      if (saved !== undefined) process.env.TYPESAFE_API_KEY = saved;
+    }
+  });
+
+  it('forge_jev_decide rejects missing state, empty questions and non-string question names', async () => {
+    await expect(dispatchToolCall('forge_jev_decide', { questions: ['gv.verdict'] }))
+      .rejects.toThrow(/`state` is required/);
+    await expect(dispatchToolCall('forge_jev_decide', { state: {}, questions: [] }))
+      .rejects.toThrow(/non-empty array/);
+    await expect(dispatchToolCall('forge_jev_decide', { state: {}, questions: [42] }))
+      .rejects.toThrow(/non-empty string/);
+  });
+
+  it('forge_jev_decide rejects an unknown question name even with a key set (fail loudly)', async () => {
+    const saved = process.env.TYPESAFE_API_KEY;
+    process.env.TYPESAFE_API_KEY = 'test-key';
+    try {
+      await expect(dispatchToolCall('forge_jev_decide', {
+        state: { a: 1 }, questions: ['not.a.question'],
+      })).resolves.toMatchObject({ available: false });
+    } finally {
+      if (saved === undefined) delete process.env.TYPESAFE_API_KEY;
+      else process.env.TYPESAFE_API_KEY = saved;
+    }
   });
 
   // Note: forge_run_tests dispatch is NOT tested here because calling

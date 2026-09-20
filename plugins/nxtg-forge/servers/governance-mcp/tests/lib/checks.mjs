@@ -6,7 +6,9 @@
 import { realpathSync as _realpathSync } from "node:fs";
 import { resolve as _resolve } from "node:path";
 
-// The 8 Node governance-mcp tools (L1). Source of truth: index.mjs TOOLS.
+// The Node governance-mcp tools (L1). Source of truth: index.mjs TOOLS.
+// The first 8 are the read-only governance probes; forge_jev_decide is the JEV advisory decision
+// layer and is the only tool that takes arguments (state + questions).
 export const NODE_TOOLS = [
   "forge_get_governance_health",
   "forge_get_governance_state",
@@ -16,7 +18,12 @@ export const NODE_TOOLS = [
   "forge_list_checkpoints",
   "forge_security_scan",
   "forge_open_dashboard",
+  "forge_jev_decide",
 ];
+
+// Read-only tools invoked with no arguments by the L1 harness. forge_jev_decide is excluded: it
+// requires {state, questions} and is exercised separately (see l1-journey.mjs Leg A2).
+export const NOARG_NODE_TOOLS = NODE_TOOLS.filter((t) => t !== "forge_jev_decide");
 
 // Any-of expected top-level keys per tool (shape probe, not value assertion).
 export const TOOL_KEYS = {
@@ -28,6 +35,9 @@ export const TOOL_KEYS = {
   forge_list_checkpoints: ["checkpoints", "count", "message"],
   forge_security_scan: ["findings"],
   forge_open_dashboard: ["path", "projectName"],
+  // `available` is present in BOTH branches — with and without TYPESAFE_API_KEY — so the harness
+  // asserts the gate itself, not a particular environment.
+  forge_jev_decide: ["available"],
 };
 
 // Orchestrator-surface tokens that must NEVER appear in an L1 (Node-only) tool response — the word
